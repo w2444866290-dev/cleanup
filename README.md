@@ -165,7 +165,7 @@ TUI 在 alt screen 上运行（`tput smcup`），退出时先 `\033[2J\033[H\033
 | `select` | tabs + 分页列表 + 开始清理按钮 | `←→` 切 tab、`↑↓` 移动/进入按钮、`Space/Enter` 勾选、`s/a/c` 预设、`Enter` 在按钮上进入 confirm |
 | `confirm` | 选中项列表 + 总大小 + [返回修改]/[开始清理] | `←→` 切按钮、`Enter` 确认、`Esc` 返回 |
 
-详见 [docs/ui.md](docs/ui.md) —— 每个屏幕的当前样式与行为，作为 UI 美化的参考底稿。
+UI 设计资料在 [docs/ui/](docs/ui/) —— 见目录里的 [README](docs/ui/README.md)：含 `ui.md` 设计规范、可在浏览器打开的视觉对照页，以及配套 jsx。
 
 ## 已知限制
 

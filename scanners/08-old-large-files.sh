@@ -7,7 +7,7 @@ OLD_DAYS=180
 MIN_MB=100
 for d in "$HOME/Downloads" "$HOME/Desktop" "$HOME/Documents" "$HOME/Movies" "$HOME/Pictures"; do
   [[ -d "$d" ]] || continue
-  spinner_start "$d"
+  scan_spinner_start "$d"
   while IFS= read -r f; do
     [[ -z "$f" ]] && continue
     sz=$(stat -f '%z' "$f" 2>/dev/null) || continue
@@ -19,4 +19,4 @@ for d in "$HOME/Downloads" "$HOME/Desktop" "$HOME/Documents" "$HOME/Movies" "$HO
               -not -path '*/*.app/*' -not -path '*/node_modules/*' -not -path '*/.git/*' \
               2>/dev/null)
 done
-spinner_stop
+scan_spinner_stop

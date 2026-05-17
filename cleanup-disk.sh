@@ -27,10 +27,7 @@ source "$SCRIPT_DIR/lib/items.sh"
 
 # ---- 2) 启动横幅 ----
 clear 2>/dev/null || true
-header "磁盘清理 — 扫描中"
-print_disk_status
-echo
-note "正在扫描可清理项，~/go/pkg 较大可能需 ~40 秒..."
+scan_init
 echo
 
 START_AVAIL_KB=$(avail_kb /System/Volumes/Data)

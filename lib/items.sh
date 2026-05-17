@@ -1,5 +1,5 @@
 # lib/items.sh — 清理项数据模型
-# 依赖：lib/ui.sh (human_kb)、lib/progress.sh (spinner_start/stop)
+# 依赖：lib/ui.sh (human_kb)、lib/progress.sh (scan_spinner_start/stop)
 #
 # 数据：每个清理项有 5 个平行数组同位置同语义
 #   CATS[i]    = 分类名（用于 TUI 的 tab 分组）
@@ -28,10 +28,10 @@ add_item() {
 # 取目录大小（KB），不存在返回 0；扫描期间显示 spinner + 路径
 dir_kb() {
   [[ -e "$1" ]] || { printf '0'; return; }
-  spinner_start "$1"
+  scan_spinner_start "$1"
   local k
   k=$(du -sk "$1" 2>/dev/null | awk '{print $1+0}')
-  spinner_stop
+  scan_spinner_stop
   printf '%s' "${k:-0}"
 }
 
@@ -40,9 +40,9 @@ dirs_kb() {
   local total=0 d k
   for d in "$@"; do
     [[ -e "$d" ]] || continue
-    spinner_start "$d"
+    scan_spinner_start "$d"
     k=$(du -sk "$d" 2>/dev/null | awk '{print $1+0}')
-    spinner_stop
+    scan_spinner_stop
     total=$(( total + k ))
   done
   printf '%d' "$total"

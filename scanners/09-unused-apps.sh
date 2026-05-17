@@ -7,7 +7,7 @@ NOW=$(date +%s)
 THRESHOLD=$(( APP_OLD_DAYS * 86400 ))
 for app_dir in "/Applications" "$HOME/Applications"; do
   [[ -d "$app_dir" ]] || continue
-  spinner_start "$app_dir"
+  scan_spinner_start "$app_dir"
   while IFS= read -r app; do
     [[ -z "$app" ]] && continue
     last=$(mdls -name kMDItemLastUsedDate -raw "$app" 2>/dev/null)
@@ -27,4 +27,4 @@ for app_dir in "/Applications" "$HOME/Applications"; do
       "osascript -e 'tell application \"Finder\" to delete POSIX file \"$app\"' >/dev/null 2>&1; true"
   done < <(find "$app_dir" -maxdepth 2 -name '*.app' -type d 2>/dev/null)
 done
-spinner_stop
+scan_spinner_stop

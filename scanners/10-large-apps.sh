@@ -7,7 +7,7 @@ MIN_APP_MB=500
 _now=$(date +%s)
 for app_dir in "/Applications" "$HOME/Applications"; do
   [[ -d "$app_dir" ]] || continue
-  spinner_start "$app_dir"
+  scan_spinner_start "$app_dir"
   while IFS= read -r app; do
     [[ -z "$app" ]] && continue
     k=$(du -sk "$app" 2>/dev/null | awk '{print $1+0}')
@@ -33,4 +33,4 @@ for app_dir in "/Applications" "$HOME/Applications"; do
       "[[ -e \"$app\" ]] && osascript -e 'tell application \"Finder\" to delete POSIX file \"$app\"' >/dev/null 2>&1; true"
   done < <(find "$app_dir" -maxdepth 2 -name '*.app' -type d 2>/dev/null)
 done
-spinner_stop
+scan_spinner_stop

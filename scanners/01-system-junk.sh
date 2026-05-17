@@ -19,10 +19,10 @@ add_item "系统垃圾" "$k" "应用崩溃报告 DiagnosticReports" \
   'rm -rf "$HOME/Library/Logs/DiagnosticReports/"* 2>/dev/null; true'
 
 scan_step "30 天以上应用日志"
-spinner_start "$HOME/Library/Logs (mtime > 30d)"
+scan_spinner_start "$HOME/Library/Logs (mtime > 30d)"
 k=$(find "$HOME/Library/Logs" -type f -mtime +30 -print0 2>/dev/null \
     | xargs -0 du -ck 2>/dev/null | tail -1 | awk '{print $1+0}')
-spinner_stop
+scan_spinner_stop
 if (( ${k:-0} > 0 )); then
   add_item "系统垃圾" "$k" "30 天以上的应用日志" \
     'find "$HOME/Library/Logs" -type f -mtime +30 -delete 2>/dev/null; true'

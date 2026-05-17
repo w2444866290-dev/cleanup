@@ -1,82 +1,117 @@
-# lib/progress.sh — 进度条 + spinner（后台进程在 /dev/tty 上实时刷新）
-# 依赖：lib/ui.sh（颜色变量）
-# 共享变量：SCAN_STEP / SCAN_TOTAL（由入口脚本预先初始化）
+# lib/progress.sh — Whisper UI 扫描阶段：两行进度条 + 异步 spinner (zh-CN)
+# 依赖：lib/ui.sh
+# 共享变量：SCAN_STEP / SCAN_TOTAL（由入口脚本初始化）
 
 : "${SCAN_STEP:=0}"
 : "${SCAN_TOTAL:=1}"
-BAR_WIDTH=24
-SPIN_CHARS=('⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏')
-SPIN_PID=""
 
-# spinner 后台进程：每 100ms 在 /dev/tty 上刷新一次
-#   [N/M] ████░░░░ 50% ⠋ <path> 12s
-# 父进程做实际工作（du / find / ...），结束后调 spinner_stop
-spinner_start() {
-  [[ -n "${SPIN_PID:-}" ]] && spinner_stop
-  local path="$1"
-  local step=$SCAN_STEP total=$SCAN_TOTAL
-  (( step > total )) && total=$step
-  local filled=$(( step * BAR_WIDTH / total ))
-  (( filled > BAR_WIDTH )) && filled=$BAR_WIDTH
-  local empty=$(( BAR_WIDTH - filled ))
-  local bar="" j
-  for ((j=0; j<filled; j++)); do bar+="█"; done
-  for ((j=0; j<empty;  j++)); do bar+="░"; done
-  local pct=$(( step * 100 / total ))
-  local start
-  start=$(date +%s)
-  (
-    local i=0 ch elapsed time_label
-    while :; do
-      elapsed=$(( $(date +%s) - start ))
-      time_label=""
-      (( elapsed >= 2 )) && time_label="  ${C_YELLOW}${elapsed}s${C_RESET}"
-      ch="${SPIN_CHARS[$((i % 10))]}"
-      printf '\r  %s[%2d/%d]%s %s%s%s %s%3d%%%s  %s%s%s  %s%s%s%s\033[K' \
-        "$C_BOLD" "$step" "$total" "$C_RESET" \
-        "$C_GREEN" "$bar" "$C_RESET" \
-        "$C_CYAN" "$pct" "$C_RESET" \
-        "$C_BOLD" "$ch" "$C_RESET" \
-        "$C_DIM" "$path" "$C_RESET" \
-        "$time_label" > /dev/tty 2>/dev/null
-      sleep 0.1
-      i=$((i + 1))
-    done
-  ) &
-  SPIN_PID=$!
+SPINNER_PID=""
+SPINNER_PATH=""
+SPINNER_START_TS=0
+SPINNER_IDX=0
+
+# /dev/tty may be missing (non-tty env / piped). gate spinner output on it.
+if { : >/dev/tty; } 2>/dev/null; then
+  _HAVE_TTY=1
+else
+  _HAVE_TTY=0
+fi
+
+# ── 1.1 启动横幅 ──────────────────────────────────────────────
+# 没有 kicker，第一行就是动作句
+scan_init() {
+  printf '  '
+  _paint "正在扫描可清理项"      "$C_FG"
+  _paint "，"                     "$C_DIM"
+  _paint "~/go/pkg"              "$C_FG"
+  _paint " 较大，预计需要 ~40 秒" "$C_DIM"
+  printf '\n'
+  nl 1
+  print_disk_status
 }
 
-spinner_stop() {
-  if [[ -n "${SPIN_PID:-}" ]]; then
-    kill "$SPIN_PID" 2>/dev/null
-    wait "$SPIN_PID" 2>/dev/null
-    SPIN_PID=""
-  fi
-}
-
-# 任何方式退出都把 spinner 杀掉（避免后台进程残留）
-trap 'spinner_stop 2>/dev/null' EXIT
-
-# 同步进度条（无 spinner，用于快项扫描）
+# ── 1.2 进度条（两行原地刷新）────────────────────────────────
+# 第一行 "正在扫描 cur/total 项…" + 右对齐 pct，第二行 bar
+# Args: $1 = "current label" (ignored visually, retained for compat)
 scan_step() {
   SCAN_STEP=$((SCAN_STEP + 1))
-  local total=$SCAN_TOTAL
-  (( SCAN_STEP > total )) && total=$SCAN_STEP
-  local filled=$(( SCAN_STEP * BAR_WIDTH / total ))
-  (( filled > BAR_WIDTH )) && filled=$BAR_WIDTH
-  local empty=$(( BAR_WIDTH - filled ))
-  local bar="" i
-  for ((i=0; i<filled; i++)); do bar+="█"; done
-  for ((i=0; i<empty;  i++)); do bar+="░"; done
-  local pct=$(( SCAN_STEP * 100 / total ))
-  printf '\r  %s[%2d/%d]%s %s%s%s %s%3d%%%s  %s\033[K' \
-    "$C_BOLD" "$SCAN_STEP" "$total" "$C_RESET" \
-    "$C_GREEN" "$bar" "$C_RESET" \
-    "$C_CYAN" "$pct" "$C_RESET" \
-    "$1"
+  local cur=$SCAN_STEP total=$SCAN_TOTAL
+  (( cur > total )) && total=$cur
+  local pct=$(( cur * 100 / total ))
+  local filled=$(( cur * LAYOUT_BAR_WIDTH / total ))
+  (( filled > LAYOUT_BAR_WIDTH )) && filled=$LAYOUT_BAR_WIDTH
+  local empty=$(( LAYOUT_BAR_WIDTH - filled ))
+
+  local left="正在扫描 ${cur}/${total} 项…"
+  local left_w; left_w=$(_vwidth "$left")
+  local pct_str; pct_str=$(printf '%d%%' "$pct")
+  local pct_w; pct_w=$(_vwidth "$pct_str")
+  local mid_pad=$(( LAYOUT_WIDTH - left_w - pct_w )); (( mid_pad < 1 )) && mid_pad=1
+
+  printf '\r\033[K  '
+  _paint "正在扫描 "         "$C_FG"
+  _paint "${cur}/${total}"   "$C_FAINT"
+  _paint " 项…"              "$C_FG"
+  printf '%*s' "$mid_pad" ""
+  _paint "$pct_str"          "$C_FG"
+  printf '\n'
+
+  printf '\033[K  '
+  _paint "$(_repeat "$G_BAR_FILL"  "$filled")" "$C_GREEN"
+  _paint "$(_repeat "$G_BAR_EMPTY" "$empty")"  "$C_DIM"
+  printf '\n'
+
+  # cursor back up to step line for next overwrite
+  printf '\033[2A'
 }
 
-# 扫描完成后清掉进度行（\r\033[K 把整行刷干净）
+# ── 1.3 进度条 + spinner（慢项）───────────────────────────────
+scan_spinner_start() {
+  [[ -n "${SPINNER_PID:-}" ]] && scan_spinner_stop
+  (( _HAVE_TTY == 0 )) && return
+  SPINNER_PATH="$1"
+  SPINNER_START_TS=$(date +%s)
+  SPINNER_IDX=0
+  ( while :; do
+      scan_spinner_tick
+      sleep 0.1
+    done ) >/dev/tty 2>/dev/null &
+  SPINNER_PID=$!
+}
+
+# spinner 行右端 "已用 NNs"
+scan_spinner_tick() {
+  local now=$(date +%s)
+  local elapsed=$(( now - SPINNER_START_TS ))
+  (( elapsed < 2 )) && return     # only show after ≥ 2s
+
+  local glyph=${G_SPINNER[$(( SPINNER_IDX % 10 ))]}
+  SPINNER_IDX=$(( SPINNER_IDX + 1 ))
+
+  # 路径字段 = 64 - 2(gutter) - 1(spinner) - 2(sep) - 7(右端 " 已用 NNs") ≈ 52
+  local path_w; path_w=$(_vwidth "$SPINNER_PATH")
+  local pad=$(( 52 - path_w )); (( pad < 1 )) && pad=1
+
+  printf '\033[s\033[2B\r\033[K  %s%s%s  %s%s%s%*s%s已用 %s%s%ds%s\033[u' \
+    "$C_CYAN"   "$glyph"        "$C_RESET" \
+    "$C_DIM"    "$SPINNER_PATH" "$C_RESET" \
+    "$pad" "" \
+    "$C_DIM"    "$C_RESET" \
+    "$C_YELLOW" "$elapsed"      "$C_RESET" >/dev/tty
+}
+
+scan_spinner_stop() {
+  if [[ -n "${SPINNER_PID:-}" ]]; then
+    kill "$SPINNER_PID" 2>/dev/null
+    wait "$SPINNER_PID" 2>/dev/null
+    SPINNER_PID=""
+  fi
+  (( _HAVE_TTY == 1 )) && printf '\033[s\033[2B\r\033[K\033[u' >/dev/tty 2>/dev/null
+}
+
+trap 'scan_spinner_stop 2>/dev/null' EXIT
+
+# ── 1.4 扫描完成 ──────────────────────────────────────────────
 scan_done() {
-  printf '\r\033[K'
+  scan_spinner_stop
 }
